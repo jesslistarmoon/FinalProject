@@ -1,17 +1,77 @@
 import sqlite3
 import json
+import matplotlib.pyplot as plt
 
-def insert_data():
+def create_tables():
     conn = sqlite3.connect("travel_weather.db")
-    cursor = conn.cursor()
+    cur = conn.cursor()
 
-    with open("data.json", "r") as f:
-        data = json.load(f)
+# Locations
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS Locations (
+            id INTEGER PRIMARY KEY,
+            name TEXT,
+            latitude REAL,
+            longitude REAL
+        );
+    """)
 
-    inserted_count = 0
-    for entry in data["travel"]:
-        cursor.execute("INSERT OR IGNORE INTO locations (latitude, longitude) VALUES (?, ?)",
-                       (entry["latitude"], entry["longitude"]))
-        cursor.execute("SELECT id FROM locations WHERE latitude = ? AND longitude = ?",
-                       (entry["latitude"], entry["longitude"]))
-        location_id = cursor.fetchone()[0]
+# Travel Times
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS TravelTimes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            location_id INTEGER,
+            mode TEXT,
+            travel_time INTEGER,
+            timestamp TEXT,
+            FOREIGN KEY (location_id) REFERENCES Locations(id)
+        );
+    """)    
+
+ # Weather Conditions
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS Weather (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            location_id INTEGER,
+            temperature REAL,
+            humidity REAL,
+            condition TEXT,
+            timestamp TEXT,
+            FOREIGN KEY (location_id) REFERENCES Locations(id)
+        );
+    """)
+
+    conn.commit()
+    conn.close()
+
+def insert_location(name, lat, lon):
+    conn = sqlite3.connect("travel_weather.db")
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO Locations (name, latitude, longitude)
+        VALUES (?, ?, ?);
+    """, (name, lat, lon))
+    conn.commit()
+    conn.close()
+
+
+def insert_travel_time(location_id, mode, time, timestamp):
+    conn = sqlite3.connect("travel_weather.db")
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO TravelTimes (location_id, mode, travel_time, timestamp)
+        VALUES (?, ?, ?, ?);
+    """, (location_id, mode, time, timestamp))
+    conn.commit()
+    conn.close()
+
+
+def insert_weather(location_id, temp, humidity, condition, timestamp):
+    conn = sqlite3.connect("travel_weather.db")
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO Weather (location_id, temperature, humidity, condition, timestamp)
+        VALUES (?, ?, ?, ?, ?);
+    """, (location_id, temp, humidity, condition, timestamp))
+    conn.commit()
+    conn.close()
