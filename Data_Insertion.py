@@ -1,6 +1,6 @@
 import sqlite3
-import json
 import matplotlib.pyplot as plt
+import seaborn as sns
 
 def create_tables():
     conn = sqlite3.connect("travel_weather.db")
