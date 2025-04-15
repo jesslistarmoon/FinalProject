@@ -48,3 +48,6 @@ def convertZip(zip_list, cur, conn):
     conn.commit()
     print('pt3 works')
     return ret
+
+
+
