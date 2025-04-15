@@ -60,3 +60,5 @@ if __name__ == "__main__":
     crime_data = fetch_nypd_crime_data(limit=100)
     store_crime_data(crime_data)
     print("Stored records successfully.")
+
+
