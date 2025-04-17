@@ -68,3 +68,6 @@ def calculate_borough_averages(db_filename, output_txt="summary_results.txt"):
 # Example usage
 if __name__ == "__main__":
     calculate_borough_averages("project_data.db")
+
+
+
