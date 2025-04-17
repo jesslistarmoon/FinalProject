@@ -1,63 +1,62 @@
 import requests
 import sqlite3
 from datetime import datetime
-import os
 
-DB_PATH = "project_data.db"
+DB_PATH = "nyc_crime_mobility.db"
 NYPD_API_URL = "https://data.cityofnewyork.us/resource/h9gi-nx95.json"
 
-def fetch_nypd_crime_data(limit=25, offset=0):
+def fetch_nypd_crime_data(limit=100):
+    """Fetch crime data from NYC Open Data (NYPD API)"""
     params = {
         "$limit": limit,
-        "$offset": offset,
         "$where": "cmplnt_fr_dt >= '2023-01-01T00:00:00'",
         "$order": "cmplnt_fr_dt DESC"
     }
+
     response = requests.get(NYPD_API_URL, params=params)
     response.raise_for_status()
     return response.json()
 
-def setup_crime_table(cur):
-    cur.execute('''
-        CREATE TABLE IF NOT EXISTS crime_data (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            zip_code INTEGER,
-            crime_count INTEGER
-        )
-    ''')
+def extract_zip_code(lat, lon):
+    """Optional: you could reverse geocode this later using Google Maps if zip not provided"""
+    return None  # Placeholder for future logic
 
-def store_crime_data():
+def store_crime_data(data):
     conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
-    setup_crime_table(cur)
 
-    existing_zips = set(row[0] for row in cur.execute("SELECT zip_code FROM crime_data").fetchall())
-    zip_counts = {}
-    offset = 0
+    for entry in data:
+        try:
+            offense = entry.get("ofns_desc", "UNKNOWN")
+            level = entry.get("law_cat_cd", "UNKNOWN")
+            borough = entry.get("boro_nm", "UNKNOWN")
+            zip_code = entry.get("addr_pct_cd", "UNKNOWN")  # Note: May not be a real zip
 
-    while len(zip_counts) < 100:
-        data = fetch_nypd_crime_data(limit=25, offset=offset)
-        offset += 25
+            lat = float(entry.get("latitude", 0))
+            lng = float(entry.get("longitude", 0))
+            occurred_date = entry.get("cmplnt_fr_dt", "UNKNOWN")
+            timestamp = datetime.utcnow().isoformat()
 
-        for entry in data:
-            zip_code = entry.get("addr_pct_cd")
-            if zip_code and zip_code.isdigit():
-                zip_code = int(zip_code)
-                if zip_code in existing_zips:
-                    continue
-                zip_counts[zip_code] = zip_counts.get(zip_code, 0) + 1
+            if lat == 0 or lng == 0:
+                continue
 
-        if offset > 2000:
-            break
+            cur.execute("""
+                INSERT INTO crime_reports 
+                (zip_code, borough, offense, level, latitude, longitude, occurred_date, timestamp)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                zip_code, borough, offense, level, lat, lng, occurred_date, timestamp
+            ))
 
-    for zip_code, count in zip_counts.items():
-        cur.execute("INSERT INTO crime_data (zip_code, crime_count) VALUES (?, ?)", (zip_code, count))
+        except Exception as e:
+            print("Skipping entry due to error:", e)
+            continue
 
     conn.commit()
     conn.close()
-    print("✅ Crime data stored.")
 
 if __name__ == "__main__":
     print("Fetching NYPD Crime Data...")
-    store_crime_data()
+    crime_data = fetch_nypd_crime_data(limit=100)
+    store_crime_data(crime_data)
     print("Stored records successfully.")
