@@ -48,3 +48,10 @@ def convertZip(zip_list, cur, conn):
     conn.commit()
     print('pt3 works')
     return ret
+
+if __name__ == "__main__":
+    cur, conn = make_database("project_data")
+    # 5 ZIPs from each borough to guarantee coverage
+    zip_sample = AllManhattan[:5] + AllBrooklyn[:5] + AllQueens[:5] + AllBronx[:5] + AllStatenIsland[:5]
+    convertZip(zip_sample, cur, conn)
+    conn.close()
