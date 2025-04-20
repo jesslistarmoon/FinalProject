@@ -1,70 +1,51 @@
-import os
 import sqlite3
+from collections import defaultdict
 
-def calculate_borough_averages(db_filename, output_txt="summary_results.txt"):
-    path = os.path.dirname(os.path.abspath(__file__))
-    db_path = os.path.join(path, db_filename)
-    conn = sqlite3.connect(db_path)
+DB_PATH = "./FinalProjectDB.db"
+
+def calculate_borough_averages(output_txt="summary_results.txt"):
+    conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
 
     # Join across 3 tables: coordinates + property value + crime
     query = '''
-    SELECT z.zip, z.lat, z.long, n.avg_mv, c.crime_count
-    FROM zips_and_coordinates z
-    JOIN nycdata n ON z.zip = n.zip_code
-    JOIN crime_data c ON z.zip = c.zip_code
+        SELECT
+            b.id AS borough_id,
+            b.borough_name,
+            c.id AS collision_id,
+            p.market_value AS property_market_value
+        FROM boroughs b
+        JOIN collisions c ON b.id = c.borough_id
+        JOIN properties p ON b.id = p.borough_id
+        ORDER BY b.id;
     '''
     cur.execute(query)
     rows = cur.fetchall()
     conn.close()
 
-    # Group data by borough (using zip ranges)
-    boroughs = {
-        "Manhattan": range(10001, 10283),
-        "Bronx": range(10451, 10476),
-        "Brooklyn": range(11201, 11257),
-        "Queens": range(11001, 11698),
-        "Staten Island": range(10301, 10315)
-    }
+    boroughCollisions = defaultdict(list)
+    boroughPropertyValue = defaultdict(list)
 
-    grouped = {
-        "Manhattan": [],
-        "Bronx": [],
-        "Brooklyn": [],
-        "Queens": [],
-        "Staten Island": []
-    }
+    for _, borough, collision_id, market_value in rows:
+        boroughCollisions[borough].append(collision_id)
+        boroughPropertyValue[borough].append(market_value)
 
-    for row in rows:
-        zip_code = int(row[0])
-        mv = row[3]
-        crimes = row[4]
-        for boro, zip_range in boroughs.items():
-            if zip_code in zip_range:
-                grouped[boro].append((mv, crimes))
-                break
 
     results = []
-    for boro, values in grouped.items():
-        if values:
-            total_mv = sum(v[0] for v in values)
-            total_crimes = sum(v[1] for v in values)
-            count = len(values)
-            avg_mv = total_mv / count
-            avg_crimes = total_crimes / count
-            results.append((boro, round(avg_mv, 2), round(avg_crimes, 2)))
-        else:
-            results.append((boro, 0, 0))
+    for borough in boroughCollisions:
+        shareofTotalCollisions = (len(boroughCollisions[borough])/len(rows))
+        averageMarketValue = sum(boroughPropertyValue[borough])/len(boroughPropertyValue[borough])
+        results.append([borough, averageMarketValue, shareofTotalCollisions])
 
     # Write to file
     with open(output_txt, "w") as f:
-        f.write("Borough | Avg Market Value ($) | Avg Crime Count\n")
-        f.write("--------|----------------------|------------------\n")
+        f.write(f"{'Borough':<15} | {'Avg Market Value ($)':>22} | {'Share of Total Collisions (%)':>28}\n")
+        f.write(f"{'-' * 16}|{'-' * 24}|{'-' * 29}\n")
         for r in results:
-            f.write(f"{r[0]:<10} | ${r[1]:<20,.2f} | {r[2]}\n")
+            f.write(f"{r[0]:<15} | ${r[1]:>21,.2f} | {r[2] * 100:>27.2f}%\n")
 
     print(f"Results written to {output_txt}")
 
 # Example usage
 if __name__ == "__main__":
-    calculate_borough_averages("project_data.db")
+    summary = fetch_summary_data()
