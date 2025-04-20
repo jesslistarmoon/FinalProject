@@ -12,47 +12,68 @@ def fetch_summary_data():
     cur = conn.cursor()
 
     query = '''
-        SELECT
-            b.id AS borough_id,
+        select
+            b.id as borough_id,
             b.borough_name,
-            c.id AS collision_id,
-            p.market_value AS property_market_value
-        FROM boroughs b
-        JOIN collisions c ON b.id = c.borough_id
-        JOIN properties p ON b.id = p.borough_id
-        ORDER BY b.id;
+            c.id as collision_id,
+            p.market_value as property_market_value
+        from boroughs b
+        join collisions c on b.id = c.borough_id
+        join properties p on b.id = p.borough_id
+        order by b.id;
     '''
     cur.execute(query)
     rows = cur.fetchall()
+
+    query = '''
+        select
+            b.borough_name,
+            bp.population
+        from boroughs b
+        join borough_population bp on b.id = bp.id;
+    '''
+    cur.execute(query)
+    populations = cur.fetchall()
+
+    query = '''
+        select
+            b.borough_name,
+            count(p.id) as park_count
+        from boroughs b
+        left join parks p on b.id = p.borough_id
+        group by b.id, b.borough_name
+        order by b.borough_name;
+    '''
+    cur.execute(query)
+    parks = cur.fetchall()
     conn.close()
 
-    boroughCollisions = defaultdict(list)
-    boroughPropertyValue = defaultdict(list)
+    boroughcollisions = defaultdict(int)
+    boroughpropertyvalue = defaultdict(list)
+    boroughparks = defaultdict(int)
+    boroughpopulation = defaultdict(int)
 
     for _, borough, collision_id, market_value in rows:
-        boroughCollisions[borough].append(collision_id)
-        boroughPropertyValue[borough].append(market_value)
+        boroughcollisions[borough]+=1
+        boroughpropertyvalue[borough].append(market_value)
 
+    for borough, population in populations:
+        boroughpopulation[borough] = population
+
+    for borough, count in parks:
+        boroughparks[borough] = count
 
     results = {}
-    for borough in boroughCollisions:
+    for borough in boroughcollisions:
         results[borough] = {}
-        results[borough]["marketValue"] = sum(boroughPropertyValue[borough])/len(boroughPropertyValue[borough])
-        results[borough]["collisionShare"] = (len(boroughCollisions[borough])/len(rows))
+        results[borough]["marketValue"] = sum(boroughpropertyvalue[borough])/len(boroughpropertyvalue[borough])
+        results[borough]["collisionPerCapita"] = boroughcollisions[borough]/boroughpopulation[borough]
+        results[borough]["parksPerCapita"] = boroughparks[borough]/boroughpopulation[borough]
 
     return results
 
 def generate_visualiation(borough_stats):
     nyc_coords = [40.7128, -74.0060]
-
-    # Stats per borough
-    borough_stats = {
-        "BROOKLYN": {"marketValue": 1147861.05, "collisionShare": 0.32},
-        "BRONX": {"marketValue": 262617562.55, "collisionShare": 0.10},
-        "MANHATTAN": {"marketValue": 82800.00, "collisionShare": 0.11},
-        "QUEENS": {"marketValue": 390778378.90, "collisionShare": 0.15},
-        "STATEN ISLAND": {"marketValue": 3337201.50, "collisionShare": 0.05}
-    }
 
     # Load GeoJSON
     with open("boroughs.geojson") as f:
@@ -81,7 +102,8 @@ def generate_visualiation(borough_stats):
         return f"""
             <strong>{name}</strong><br>
             Avg Market Value: ${stats['marketValue']:,.2f}<br>
-            Share of Collisions: {stats['collisionShare']*100:.2f}%
+            Collision Per Capita (100000): {stats['collisionPerCapita']*100000:.2f}<br>
+            Parks Per Capita (100000): {stats['parksPerCapita']*100000:.2f}
         """
 
     # Add GeoJson with popups

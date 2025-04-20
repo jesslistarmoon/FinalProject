@@ -21,33 +21,63 @@ def fetch_summary_data():
     '''
     cur.execute(query)
     rows = cur.fetchall()
+
+    query = '''
+        SELECT
+            b.borough_name,
+            bp.population
+        FROM boroughs b
+        JOIN borough_population bp ON b.id = bp.id;
+    '''
+    cur.execute(query)
+    populations = cur.fetchall()
+
+    query = '''
+        SELECT
+            b.borough_name,
+            COUNT(p.id) AS park_count
+        FROM boroughs b
+        LEFT JOIN parks p ON b.id = p.borough_id
+        GROUP BY b.id, b.borough_name
+        ORDER BY b.borough_name;
+    '''
+    cur.execute(query)
+    parks = cur.fetchall()
     conn.close()
 
-    boroughCollisions = defaultdict(list)
+    boroughCollisions = defaultdict(int)
     boroughPropertyValue = defaultdict(list)
+    boroughParks = defaultdict(int)
+    boroughPopulation = defaultdict(int)
 
     for _, borough, collision_id, market_value in rows:
-        boroughCollisions[borough].append(collision_id)
+        boroughCollisions[borough]+=1
         boroughPropertyValue[borough].append(market_value)
 
+    for borough, population in populations:
+        boroughPopulation[borough] = population
 
-    results = []
+    for borough, count in parks:
+        boroughParks[borough] = count
+
+    results = {}
     for borough in boroughCollisions:
-        shareofTotalCollisions = (len(boroughCollisions[borough])/len(rows))
-        averageMarketValue = sum(boroughPropertyValue[borough])/len(boroughPropertyValue[borough])
-        results.append([borough, averageMarketValue, shareofTotalCollisions])
+        results[borough] = {}
+        results[borough]["marketValue"] = sum(boroughPropertyValue[borough])/len(boroughPropertyValue[borough])
+        results[borough]["collisionPerCapita"] = boroughCollisions[borough]/boroughPopulation[borough]
+        results[borough]["parksPerCapita"] = boroughParks[borough]/boroughPopulation[borough]
 
     return results
 
 def generate_visualizations(summary_data):
-    boroughs = [r[0] for r in summary_data]
-    avg_mv = [r[1] for r in summary_data]
-    totalCollisionShare = [r[2]*100 for r in summary_data]
+    boroughs = [r for r in summary_data.keys()]
+    avg_mv = [r["marketValue"] for r in summary_data.values()]
+    totalCollisionShare = [r["collisionPerCapita"]*100000 for r in summary_data.values()]
+    parksPerCapita = [r["parksPerCapita"]*100000 for r in summary_data.values()]
 
     # 1. Bar Chart: Avg Property Value
     plt.figure(figsize=(10, 4))
     bars = plt.bar(boroughs, avg_mv, color='lightgreen', edgecolor='black')
-    plt.yscale('log')  # Logarithmic scale
 
     plt.title("Average Property Value by Borough (Log Scale)")
     plt.xlabel("Borough")
@@ -63,38 +93,65 @@ def generate_visualizations(summary_data):
     plt.savefig("avg_property_value_by_borough_log_annotated.png")
     plt.show()
 
-    # 2. Bar Chart: Avg Crime Count
+    # 2. Bar Chart: Collision poer capita
     plt.figure(figsize=(10, 4))
     plt.bar(boroughs, totalCollisionShare, color='tomato', edgecolor='black')
-    plt.title("Share of total Collisions by Borough")
+    plt.title("Collision per Capita (100000) by Borough")
     plt.xlabel("Borough")
-    plt.ylabel("Share of total collisions (%)")
+    plt.ylabel("Collision per Capita (100000)")
     plt.grid(axis='y', linestyle='--', alpha=0.6)
 
     for bar, value in zip(bars, totalCollisionShare):
         plt.text(bar.get_x() + bar.get_width() / 2, value,
-                 f"{value:,.0f}%", ha='center', va='bottom', fontsize=8)
+                 f"{value:,.0f}", ha='center', va='bottom', fontsize=8)
 
     plt.tight_layout()
-    plt.savefig("avg_crime_count_by_borough.png")
+    plt.savefig("collision_per_capita.png")
     plt.show()
 
-    # 3. Scatter Plot: Crime Count vs Property Value
+    # 3. Bar Chart: Parks per capita
+    plt.figure(figsize=(10, 4))
+    plt.bar(boroughs, parksPerCapita, color='tomato', edgecolor='black')
+    plt.title("Parks per Capita (100000) by Borough")
+    plt.xlabel("Borough")
+    plt.ylabel("Parks per Capita (100000)")
+    plt.grid(axis='y', linestyle='--', alpha=0.6)
+
+    for bar, value in zip(bars, parksPerCapita):
+        plt.text(bar.get_x() + bar.get_width() / 2, value,
+                 f"{value:,.0f}", ha='center', va='bottom', fontsize=8)
+
+    plt.tight_layout()
+    plt.savefig("parks_per_capita.png")
+    plt.show()
+
+    # 4. Scatter Plot: Callision Count vs Property Value
     plt.figure(figsize=(6, 5))
     plt.scatter(totalCollisionShare, avg_mv, s=100, color='mediumslateblue', edgecolor='black')
     for i, boro in enumerate(boroughs):
         plt.annotate(boro, (totalCollisionShare[i]+0.2, avg_mv[i]), fontsize=8)
-    plt.title("Crime Count vs Property Value")
-    plt.xlabel("Share of Total Collisions (%)")
+    plt.title("Collision Per Capita (100000) vs Property Value")
+    plt.xlabel("Collision Per Capita (100000)")
     plt.ylabel("Average Market Value ($)")
     plt.grid(True, linestyle='--', alpha=0.5)
     plt.tight_layout()
-    plt.savefig("scatter_crime_vs_value.png")
+    plt.savefig("scatter_collision_vs_value.png")
+    plt.show()
+
+    # 5. Scatter Plot: Parkesr per capita vs Property value
+    plt.figure(figsize=(6, 5))
+    plt.scatter(parksPerCapita, avg_mv, s=100, color='mediumslateblue', edgecolor='black')
+    for i, boro in enumerate(boroughs):
+        plt.annotate(boro, (parksPerCapita[i]+0.2, avg_mv[i]), fontsize=8)
+    plt.title("Parks Per Capita (100000) vs Property Value")
+    plt.xlabel("Parks Per Capita (100000)")
+    plt.ylabel("Average Market Value ($)")
+    plt.grid(True, linestyle='--', alpha=0.5)
+    plt.tight_layout()
+    plt.savefig("scatter_parks_vs_value.png")
     plt.show()
 
 if __name__ == "__main__":
     summary = fetch_summary_data()
     generate_visualizations(summary)
-
-
 

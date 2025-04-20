@@ -2,20 +2,29 @@ import requests
 import sqlite3
 
 DB_PATH = "./FinalProjectDB.db"
-NYPD_API_URL = "https://data.cityofnewyork.us/resource/h9gi-nx95.json"
+PARK_API_URL = "https://data.cityofnewyork.us/resource/enfh-gkve.json"
 
-def fetch_nypd_crime_data(limit=100):
+def fetch_park_data(limit=100):
     """Fetch crime data from NYC Open Data (NYPD API)"""
     params = {
         "$limit": limit,
-        "$where": "zip_code IS NOT NULL AND borough IS NOT NULL"
+        "$where": "borough IS NOT NULL"
     }
 
-    response = requests.get(NYPD_API_URL, params=params)
+    response = requests.get(PARK_API_URL, params=params)
     response.raise_for_status()
     return response.json()
 
-def store_crime_data(data):
+boroughCodeToName = {
+    "UNKNOWN": "UNKNOWN",
+    "M": "MANHATTAN",
+    "X": "BRONX",
+    "B": "BROOKLYN",
+    "Q": "QUEENS",
+    "R": "STATEN ISLAND"
+}
+
+def store_park_data(data):
     conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
 
@@ -24,11 +33,11 @@ def store_crime_data(data):
         if count == 25:
             break
         try:
-            collision_id = entry.get("collision_id", None)
-            if collision_id is None:
+            id = entry.get("omppropid", None)
+            if id is None:
                 continue
             borough = entry.get("borough", "UNKNOWN")
-            zipcode = entry.get("zip_code", "UNKNOWN")
+            borough = boroughCodeToName[borough]
 
             cur.execute("SELECT id FROM boroughs WHERE borough_name = ?", (borough,))
             rows = cur.fetchone()
@@ -45,34 +54,18 @@ def store_crime_data(data):
             else:
                 borough_id = rows[0]
 
-            cur.execute("SELECT id FROM zipcodes WHERE zipcode = ?", (zipcode,))
-            rows = cur.fetchone()
-            if rows is None:
-                # print(zipcode, "not in zipcodes table, creating...")
-                cur.execute("""
-                    INSERT INTO zipcodes
-                    (zipcode)
-                    VALUES (?)
-                """, (
-                    zipcode,
-                ))
-                zipcode_id = cur.lastrowid
-            else:
-                zipcode_id = rows[0]
-
-            cur.execute("SELECT 1 FROM collisions WHERE id = ?", (collision_id,))
+            cur.execute("SELECT 1 FROM parks WHERE id = ?", (id,))
             if cur.fetchone() is not None:
                 continue
             cur.execute("""
-                INSERT INTO collisions
-                (id, borough_id, zipcode_id)
-                VALUES (?, ?, ?)
+                INSERT INTO parks
+                (id, borough_id)
+                VALUES (?, ?)
             """, (
-                collision_id, borough_id, zipcode_id
+                id, borough_id
             ))
-            print("Stored", collision_id)
+            print("Stored", id)
             count+=1
-
 
         except Exception as e:
             print("Skipping entry due to error:", e)
@@ -82,7 +75,7 @@ def store_crime_data(data):
     conn.close()
 
 if __name__ == "__main__":
-    print("Fetching NYPD Crime Data...")
-    crime_data = fetch_nypd_crime_data(limit=100000)
-    store_crime_data(crime_data)
+    print("Fetching Park Data...")
+    park_data = fetch_park_data(limit=100000)
+    store_park_data(park_data)
     print("Stored records successfully.")
