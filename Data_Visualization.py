@@ -95,3 +95,6 @@ def generate_visualizations(summary_data):
 if __name__ == "__main__":
     summary = fetch_summary_data()
     generate_visualizations(summary)
+
+
+
