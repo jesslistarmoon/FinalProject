@@ -1,80 +1,116 @@
 import requests
 import sqlite3
-import os
+from collections import defaultdict
 
-# NYC Property API (building data)
-PROPERTY_API = 'https://data.cityofnewyork.us/resource/8y4t-faws.json'
+DB_PATH = "./FinalProjectDB.db"
+NYPD_API_URL = "https://data.cityofnewyork.us/resource/8y4t-faws.json"
 
-def fetch_property_data(zip_code, limit=25):
-    """Fetch property data for a specific ZIP code."""
-    url = f"{PROPERTY_API}?$limit={limit}&zip_code={zip_code}"
-    try:
-        response = requests.get(url)
-        return response.json()
-    except Exception as e:
-        print(f"Error fetching data for ZIP {zip_code}: {e}")
-        return []
+boroughCodeToName = {
+    0: "UNKNOWN",
+    1: "MANHATTAN",
+    2: "BRONX",
+    3: "BROOKLYN",
+    4: "QUEENS",
+    5: "STATEN ISLAND"
+}
 
-def setup_property_table(cur):
-    """Create the table for storing property data."""
-    cur.execute('''
-        CREATE TABLE IF NOT EXISTS nycdata (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            zip_code INTEGER,
-            avg_mv FLOAT,
-            avg_sqft FLOAT
-        )
-    ''')
+def fetch_property_data(limit=100):
+    """Fetch crime data from NYC Open Data (NYPD API)"""
+    params = {
+        "$limit": limit,
+        "$where": "BORO IS NOT NULL AND PYMKTTOT IS NOT NULL",
+        "$select": "PARID, BORO, PYMKTTOT, ZIP_CODE"
+    }
 
-def insert_property_data(cur, conn):
-    """Loop through ZIP codes and insert property stats per ZIP."""
-    cur.execute("SELECT zip FROM zips_and_coordinates")
-    zip_rows = cur.fetchall()
-    
-    for row in zip_rows:
-        zip_code = row[0]
-        data = fetch_property_data(zip_code)
-        
-        total_mv = 0
-        total_sqft = 0
-        count = 0
+    response = requests.get(NYPD_API_URL, params=params)
+    response.raise_for_status()
+    return response.json()
 
-        for record in data:
-            try:
-                market_value = int(record.get('curmkttot', 0))
-                sqft = int(record.get('gross_sqft', 0))
-                total_mv += market_value
-                total_sqft += sqft
-                count += 1
-            except:
-                continue  # Skip rows with missing or invalid data
-
-        if count > 0:
-            avg_mv = total_mv / count
-            avg_sqft = total_sqft / count
-        else:
-            avg_mv = 0
-            avg_sqft = 0
-
-        cur.execute('''
-            INSERT INTO nycdata (zip_code, avg_mv, avg_sqft)
-            VALUES (?, ?, ?)
-        ''', (zip_code, avg_mv, avg_sqft))
-
-    conn.commit()
-    print("NYC property data successfully inserted.")
-
-def run_property_pipeline():
-    path = os.path.dirname(os.path.abspath(__file__))
-    conn = sqlite3.connect(path + '/project_data.db')
+def store_property_data(data):
+    conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
 
-    setup_property_table(cur)
-    insert_property_data(cur, conn)
+    boroughCount = defaultdict(int)
+    count = 0
+    for entry in data:
+        if count == 25:
+            break
+        try:
+            property_id = entry.get("PARID", None)
+            if property_id is None:
+                continue
 
+            boroughCode = int(entry.get("BORO", 0))
+            if boroughCount[boroughCode] == 5:
+                continue
+            borough = boroughCodeToName[boroughCode]
+
+            zipcode = entry.get("ZIP_CODE", "UNKNOWN")
+
+            cur.execute("SELECT id FROM boroughs WHERE borough_name = ?", (borough,))
+            rows = cur.fetchone()
+            if rows is None:
+                # print(borough, "not in boroughs table, creating...")
+                cur.execute("""
+                    INSERT INTO boroughs
+                    (borough_name)
+                    VALUES (?)
+                """, (
+                    borough,
+                ))
+                borough_id = cur.lastrowid
+            else:
+                borough_id = rows[0]
+
+            cur.execute("SELECT id FROM zipcodes WHERE zipcode = ?", (zipcode,))
+            rows = cur.fetchone()
+            if rows is None:
+                # print(zipcode, "not in zipcodes table, creating...")
+                cur.execute("""
+                    INSERT INTO zipcodes
+                    (zipcode)
+                    VALUES (?)
+                """, (
+                    zipcode,
+                ))
+                zipcode_id = cur.lastrowid
+            else:
+                zipcode_id = rows[0]
+
+            market_value = entry.get("PYMKTTOT", None)
+            if market_value is None:
+                continue
+            market_value = int(market_value)
+            if market_value == 0:
+                continue
+
+            cur.execute("SELECT 1 FROM properties WHERE id = ?", (property_id,))
+            if cur.fetchone() is not None:
+                continue
+            cur.execute("""
+                INSERT INTO properties
+                (id, market_value, borough_id, zipcode_id)
+                VALUES (?, ?, ?, ?)
+            """, (
+                property_id, market_value, borough_id, zipcode_id
+            ))
+            print("Stored", property_id)
+            count+=1
+            boroughCount[boroughCode]+=1
+
+
+        except Exception as e:
+            print("Skipping entry due to error:", e)
+            raise e
+
+    print(boroughCount)
+    conn.commit()
     conn.close()
+    return
 
 if __name__ == "__main__":
-    run_property_pipeline()
-
-
+    print("Fetching NY Property Data...")
+    property_data = fetch_property_data(limit=200000)
+    print(len(property_data))
+    store_property_data(property_data)
+    print("Stored records successfully.")
