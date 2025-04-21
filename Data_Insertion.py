@@ -62,9 +62,9 @@ def calculate_borough_averages(output_txt="summary_results.txt"):
     results = {}
     for borough in boroughcollisions:
         results[borough] = {}
-        results[borough]["marketvalue"] = sum(boroughpropertyvalue[borough])/len(boroughpropertyvalue[borough])
-        results[borough]["collisionpercapita"] = boroughcollisions[borough]/boroughpopulation[borough]
-        results[borough]["parkspercapita"] = boroughparks[borough]/boroughpopulation[borough]
+        results[borough]["marketValue"] = sum(boroughpropertyvalue[borough])/len(boroughpropertyvalue[borough])
+        results[borough]["collisionPerCapita"] = boroughcollisions[borough]/boroughpopulation[borough]
+        results[borough]["parksPerCapita"] = boroughparks[borough]/boroughpopulation[borough]
 
     # Write to file
     with open(output_txt, "w") as f:

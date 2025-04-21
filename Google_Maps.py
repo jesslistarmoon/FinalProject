@@ -3,7 +3,6 @@ from collections import defaultdict
 import json
 import folium
 
-# ✅ Your updated API key
 API_KEY = "YAIzaSyDoqB0LkalbSFcoDhZVkdf8MnBg63Kx2z0"
 DB_PATH = "./FinalProjectDB.db"
 
@@ -81,7 +80,6 @@ def generate_visualiation(borough_stats):
     # Create folium map
     m = folium.Map(location=nyc_coords, zoom_start=10, tiles="CartoDB positron")
 
-    # Color function based on collision share
     def style_function(feature):
         name = feature["properties"]["name"].upper()
         stats = borough_stats.get(name, {})
