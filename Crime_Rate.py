@@ -1,11 +1,8 @@
 import requests
 import sqlite3
-from Create_table import create_tables  
 
 DB_PATH = "./FinalProjectDB.db"
 NYPD_API_URL = "https://data.cityofnewyork.us/resource/h9gi-nx95.json"
-
-create_tables()
 
 def fetch_nypd_crime_data(limit=100):
     """Fetch crime data from NYC Open Data (NYPD API)"""
